@@ -1,9 +1,12 @@
 ### 1.核心概念
 - state：应用的状态，树形结构，可以囊括很多子state。
 - action：想要更改state中的数据，需要发起（dispatch）一个action。action是一个简单对象，描述了state的变化。按照约定，action具有type属性来描述它的类型。
+- action creator：一个创建action的函数，是一个创建action的工厂。
 - reducer：根据action的描述来生成新的state。
-- dispatch：发起action的函数。
+- dispatch：发起action的函数，其内部会调用reducer来生成新的state。
 - store：维持应用所有state树的一个对象，改变store内state的唯一途径是对它dispatch一个action。一个应用有且仅有一个store。
+- store creator：一个创建store的函数。
+- store enhancer：一个组合store creator的高阶函数，返回一个强化班的store creator，通过复合函数改变store的接口。
 
 ### 2.核心API
 #### 2.1 store
@@ -66,6 +69,64 @@ compose(...functions)
 参数说明：需要组合的多个函数，每个函数接受一个参数，返回值提供给左侧的函数作为参数，最右侧函数可以接受多个参数。
 
 `compose(funcA, funcB, funcC)` => `compose(funcA(funcB(funcC())))`
+
+#### 2.6 bindActionCreators
+
+```javascript
+bindActionCreators(actionCreators, dispatch)
+```
+将一个value为不同action creator的对象，转换成拥有相同key的对象，value为使用dispatch分发action creator所创建的action的函数。
+
+参数说明：
+- actionCreators：一个action creator函数或者是一个value为action creator的对象。
+- store的dispatch函数
+
+返回值：
+- 如果传入的是一个action creator函数，那么返回结果也会是一个函数，这个函数直接分发action creator所创建的action。
+- 如果传入的是一个value为action creator的对象，那么返回的也会是一个对象，返回的对象与传入的对象拥有相同的key，value为直接分发对应action creator所创建的action的函数。
+
+示例:
+```javascript
+// action creator
+function addTodo (text) {
+  return {
+    type: 'ADD_TODO',
+    text
+  }
+}
+// action creator
+function removeTodo (id) {
+  return {
+    type: 'REMOVE_TODO',
+    id
+  }
+}
+
+const boundActionCreators = bindActionCreators(TodoActionCreators, dispatch)
+// boundActionCreators的结构如下
+// {
+//   addTodo: function (this, ...args) {
+//     return dispatch(addTodo.apply(this, args))
+//   },
+//   removeTodo: function (this, ...args) {
+//     return dispatch(removeTodo.apply(this, args))
+//   }
+// }
+```
+
+使用场景：
+
+需要把action creator传递给子组件，但是又不想让这个子组件察觉到Redux的存在。
+
+```javascript
+const mapDispatchToProps = dispatch => {
+  return {
+    ...bindActionCreators(appActions, dispatch)
+  }
+}
+
+export default connect(mapStateToProps, mapDispatchToProps)(App)
+```
 
 ### 3.源码解析
 
@@ -360,6 +421,50 @@ export default function applyMiddleware (middlewares) {
       dispatch // 经过包装后的dispatch
     }
   }
+}
+```
+
+#### 3.5 bindActionCreators
+```javascript
+/**
+ * @description 直接分发（dispatch）actionCreator创建的action
+ * @param {*} actionCreator action创建函数
+ * @param {*} dispatch 分发action的函数
+ * @returns 一个分发（dispatch）actionCreator创建的action的函数
+ */
+function bindActionCreator (actionCreator, dispatch) {
+  return function (this, ...args) {
+    return dispatch(actionCreator.apply(this, args)) // dispatch action
+  }
+}
+/**
+ * @description 直接分发传递进来的actionCreators所创建的actions
+ * @export
+ * @param {*} actionCreators value为action创建函数的对象 | 一个action创建函数
+ * @param {*} dispatch 分发action的函数
+ * @returns 一个对象或一个函数，直接分发actionCreators创建的actions
+ */
+export default function bindActionCreators(actionCreators, dispatch) {
+  if (typeof actionCreators === 'function') {
+    return bindActionCreator(actionCreators, dispatch)
+  }
+  if (typeof actionCreators !== 'object' || actionCreators === null) {
+    throw new Error(
+      `bindActionCreators expected an object or a function, instead received ${
+        actionCreators === null ? 'null' : typeof actionCreators
+      }. ` +
+        `Did you write "import ActionCreators from" instead of "import * as ActionCreators from"?`
+    )
+  }
+  // 返回一个对象，key为action创建函数的名字，value为分发actionCreator创建的action的函数
+  const boundActionCreators = {}
+  for (const key in actionCreators) {
+    const actionCreator = actionCreators[key]
+    if (typeof actionCreator === 'function') {
+      boundActionCreators[key] = bindActionCreator(actionCreator, dispatch)
+    }
+  }
+  return boundActionCreators
 }
 ```
 
