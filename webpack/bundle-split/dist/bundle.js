@@ -91,7 +91,7 @@
       installedChunks[chunkId] = 0
     }
     // 安装chunk中的module
-    for (moduleId in object) {
+    for (moduleId in moreModules) {
       if (moreModules.hasOwnProperty(moduleId)) {
         modules[moduleId] = moreModules[moduleId]
       }
