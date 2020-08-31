@@ -99,6 +99,74 @@ class Promise {
     })
     return promise
   }
+  catch(onRejected) {
+    return this.then(null, onRejected)
+  }
+  finally(fn) {
+    return this.then(
+      (x) => {
+        Promise.resolve(fn()).then(() => x)
+      },
+      (r) => {
+        Promise.resolve(fn()).then(() => {
+          throw r
+        })
+      }
+    )
+  }
+
+  static resolve (param) {
+    if (param instanceof Promise) {
+      return param
+    }
+    const promise = new Promise((resolve, reject) => {
+      resolvePromise(promise, param, resolve, reject)
+    })
+    return promise
+  }
+
+  static reject (param) {
+    return new Promise((_, reject) => {
+      reject(param)
+    })
+  }
+
+  static all (promises) {
+    return new Promise((resolve, reject) => {
+      const result = []
+      if (!promises || !promises.length) {
+        return resolve(result)
+      } else {
+        let c = 0
+        function resolveValue(i, v) {
+          result[i] = v
+          c++
+          if (c === promises.length) {
+            resolve(result)
+          }
+        }
+        for (let i = 0; i < promises.length; i++) {
+          Promise.resolve(promise[i]).then(x => {
+            resolveValue(i, x)
+          }, r => {
+              reject(r)
+          })
+        }
+      }
+    })
+  }
+
+  static race (promises) {
+    return new Promise((resolve, reject) => {
+      if (!promises || !promise.length) {
+        return
+      } else {
+        for (let i = 0; i < promises.length; i++) {
+          Promise.resolve(promises[i]).then(resolve, reject)
+        }
+      }
+    })
+  }
 }
 
 function resolvePromise(promise, x, resolve, reject) {
@@ -135,12 +203,12 @@ function resolvePromise(promise, x, resolve, reject) {
 }
 
 Promise.defer = Promise.deferred = function () {
-  let dfd = {};
+  let dfd = {}
   dfd.promise = new Promise((resolve, reject) => {
-      dfd.resolve = resolve;
-      dfd.reject = reject;
-  });
-  return dfd;
+    dfd.resolve = resolve
+    dfd.reject = reject
+  })
+  return dfd
 }
 
 module.exports = Promise
