@@ -163,6 +163,228 @@ function mountFunctionalComponent (vnode, container, isSVG) {
   vnode.el = $vnode.el
 }
 
-function patch (prevVNode, vnode, container) {
+function patch (prevVNode, nextVNode, container) {
+  const prevFlags = prevVNode.flags
+  const nextFlags = nextVNode.flags
+  if (prevFlags !== nextFlags) {
+    replaceVNode(prevVNode, nextVNode, container)
+  } else if (nextFlags & VNodeFlags.ELEMENT) {
+    patchElement(prevVNode, nextVNode, container)
+  } else if (nextFlags & VNodeFlags.TEXT) {
+    patchText(prevVNode, nextVNode)
+  } else if (nextFlags & VNodeFlags.COMPONENT) {
+    patchComponent(prevVNode, nextVNode, container)
+  } else if (nextFlags & VNodeFlags.FRAGMENT) {
+    patchFragment(prevVNode, nextVNode, container)
+  } else if (nextFlags & VNodeFlags.PORTAL) {
+    patchPortal(prevVNode, nextVNode, container)
+  }
+}
 
+function replaceVNode (prevVNode, nextVNode, container) {
+  container.removeChild(prevVNode.el)
+  mount(nextVNode, container)
+}
+
+function patchElement (prevVNode, nextVNode, container) {
+  if (prevVNode.tag !== nextVNode.tag) {
+    replaceVNode(prevVNode, nextVNode, container)
+    return
+  }
+
+  const el = (nextVNode.el = prevVNode.el)
+  // 更新VNodeData
+  const prevData = prevVNode.data
+  const nextData = nextVNode.data
+  if (nextData) {
+    for (const key in nextData) {
+      const prevValue = prevData[key]
+      const nextValue = nextData[key]
+      patchData(el, key, prevValue, nextValue)
+    }
+  }
+  if (prevData) {
+    for (const key in prevData) {
+      const prevValue = prevData[key]
+      if (prevValue && !nextData.hasOwnProperty(key)) { // eslint-disable-line
+        patchData(el, key, prevValue, null)
+      }
+    }
+  }
+  // 更新子节点
+  patchChildren(
+    prevVNode.childFlags,
+    nextVNode.childFlags,
+    prevVNode.children,
+    nextVNode.children,
+    el
+  )
+}
+
+function patchChildren (prevChildFlags, nextChildFlags, prevChildren, nextChildren, container) {
+  switch (prevChildFlags) {
+    // 旧的children是单个子节点
+    case ChildrenFlags.SINGLE_VNODE:
+      switch (nextChildFlags) {
+        // 新的children是单个子节点
+        case ChildrenFlags.SINGLE_VNODE:
+          // 新旧children均是单个子节点时直接patch
+          patch(prevChildren, nextChildren, container)
+          break
+        // 新的children是没有子节点
+        case ChildrenFlags.NO_CHILDREN:
+          // 新的children不存在时，将旧的children移除
+          container.removeChild(prevChildren.el)
+          break
+        // 新的children是多个子节点
+        default:
+          // 移除旧的children
+          container.removeChild(prevChildren.el)
+          // 挂载新的children
+          for (let i = 0; i < nextChildren.length; i++) {
+            mount(nextChildren[i], container)
+          }
+          break
+      }
+      break
+    // 旧的children是没有子节点
+    case ChildrenFlags.NO_CHILDREN:
+      switch (nextChildFlags) {
+        // 新的children是单个子节点
+        case ChildrenFlags.SINGLE_VNODE:
+          mount(nextChildren, container)
+          break
+        // 新的children是没有子节点
+        case ChildrenFlags.NO_CHILDREN:
+          break
+        // 新的children是多个子节点
+        default:
+          for (let i = 0; i < nextChildren.length; i++) {
+            mount(nextChildren[i], container)
+          }
+          break
+      }
+      break
+    // 旧的children是多个子节点
+    default:
+      switch (nextChildFlags) {
+        // 新的children是单个子节点
+        case ChildrenFlags.SINGLE_VNODE:
+          for (let i = 0; i < prevChildren.length; i++) {
+            container.removeChild(prevChildren[i].el)
+          }
+          mount(nextChildren, container)
+          break
+        // 新的children是没有子节点
+        case ChildrenFlags.NO_CHILDREN:
+          for (let i = 0; i < prevChildren.length; i++) {
+            container.removeChild(prevChildren[i].el)
+          }
+          break
+        // 新的children是多个子节点
+        default:
+          // 核心diff算法
+          break
+      }
+      break
+  }
+}
+
+function patchText (prevVNode, nextVNode) {
+  const el = (nextVNode.el = prevVNode.el)
+  // 只有文本的内容不一致时才更新
+  if (prevVNode.children !== nextVNode.children) {
+    el.nodeValue = nextVNode.children
+  }
+}
+
+function patchFragment (prevVNode, nextVNode, container) {
+  // 更新子节点
+  patchChildren(
+    prevVNode.childFlags,
+    nextVNode.childFlags,
+    prevVNode.children,
+    nextVNode.children,
+    container
+  )
+  switch (nextVNode.childFlags) {
+    case ChildrenFlags.SINGLE_VNODE:
+      nextVNode.el = nextVNode.children.el
+      break
+    case ChildrenFlags.NO_CHILDREN:
+      if (prevVNode & ChildrenFlags.NO_CHILDREN) {
+        nextVNode.el = prevVNode.el
+      } else {
+        const placeholder = createTextNode('')
+        mountText(placeholder, container)
+        nextVNode.el = placeholder.el
+      }
+      break
+    default:
+      nextVNode.el = nextVNode.children[0].el
+      break
+  }
+}
+
+function patchPortal (prevVNode, nextVNode, container) {
+  patchChildren(
+    prevVNode.childFlags,
+    nextVNode.childFlags,
+    prevVNode.children,
+    nextVNode.children,
+    container
+  )
+  nextVNode.el = prevVNode.el
+  if (nextVNode.tag !== prevVNode.tag) {
+    const target = typeof nextVNode.tag === 'string' ? document.querySelector(nextVNode.tag) : nextVNode.tag
+    switch (nextVNode.childFlags) {
+      case ChildrenFlags.SINGLE_VNODE:
+        target.appendChild(nextVNode.children.el)
+        break
+      case ChildrenFlags.NO_CHILDREN:
+        break
+      default:
+        for (let i = 0; i < nextVNode.children.length; i++) {
+          target.appendChild(nextVNode.children[i].el)
+        }
+        break
+    }
+  }
+}
+
+function patchComponent (prevVNode, nextVNode, container) {
+  // TODO 组件的patch
+}
+
+function patchData (el, key, prevValue, nextValue) {
+  switch (key) {
+    case 'style':
+      for (const k in nextValue) {
+        el.style[k] = nextValue[k]
+      }
+      for (const k in prevValue) {
+        if (!nextValue.hasOwnProperty(k)) { // eslint-disable-line
+          el.style[k] = ''
+        }
+      }
+      break
+    case 'class':
+      el.className = nextValue
+      break
+    default:
+      if (key[0] === 'o' && key[1] === 'n') {
+        const event = key.slice(2)
+        if (prevValue) {
+          el.removeEventListener(event, prevValue)
+        }
+        if (nextValue) {
+          el.addEventListener(event, nextValue)
+        }
+      } else if (domPropsRE.test(key)) {
+        el[key] = nextValue
+      } else {
+        el.setAttribute(key, nextValue)
+      }
+      break
+  }
 }
