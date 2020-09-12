@@ -77,7 +77,7 @@ function normalizeVNodes (children) {
  * @param {*} text
  * @return {*} 文本VNode
  */
-function createTextNode (text) {
+export function createTextNode (text) {
   return {
     _isVNode: true,
     flags: VNodeFlags.TEXT,
