@@ -1,5 +1,5 @@
 function isNative(Ctor) {
-  return Ctor === 'function' && /native code/.test(Ctor.toString())
+  return typeof Ctor === 'function' && /native code/.test(Ctor.toString())
 }
 const isBrowser = typeof window !== 'undefined'
 const UA = isBrowser && window.navigator.userAgent.toLowerCase()
